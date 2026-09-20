@@ -122,14 +122,15 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         # Results
         # -------------------------------------------------
 
-        self.model = Gtk.ListStore(
-            str,      # 0 title
-            str,      # 1 filename
-            str,      # 2 url
-            str,      # 3 date
-            object,   # 4 tags
-            object,   # 5 snippets
-        )
+		self.model = Gtk.ListStore(
+		    str,      # 0 title
+		    str,      # 1 filename
+		    str,      # 2 url
+		    str,      # 3 date
+		    object,   # 4 tags
+		    object,   # 5 snippets
+		    float,    # 6 relevance
+		)
 
         self.tree = Gtk.TreeView(
             model=self.model
@@ -455,7 +456,12 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 fetchtext=True
             )
 
-            for doc in query.fetchmany(20):
+            for doc in query.fetchmany(50):
+
+                print(
+                    'DOC ITEMS:',
+                    list(doc.items())
+                )
 
                 url = getattr(
                     doc,
@@ -493,7 +499,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                         url,
                         date,
                         tags,
-                        snippets
+                        snippets,
+                        relevance,
                     ]
                 )
 
