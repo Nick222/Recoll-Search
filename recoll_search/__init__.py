@@ -3,6 +3,7 @@ from urllib.parse import unquote, urlparse
 from datetime import datetime
 from gi.repository import Gtk, Pango
 
+from zim.gui.pageview.find import FindQuery
 from zim.plugins import PluginClass
 from zim.actions import action
 from zim.gui.mainwindow import MainWindowExtension
@@ -129,12 +130,13 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         # -------------------------------------------------
 
         self.model = Gtk.ListStore(
-            str,      # 0 title
-            str,      # 1 filename
-            str,      # 2 url
-            str,      # 3 date
-            object,   # 4 tags
-            object,   # 5 snippets
+            int,      # 0 rank
+            str,      # 1 title
+            str,      # 2 filename
+            str,      # 3 url
+            str,      # 4 date
+            object,   # 5 tags
+            object,   # 6 snippets
         )
 
         self.tree = Gtk.TreeView(
@@ -146,11 +148,31 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         renderer = Gtk.CellRendererText()
+        renderer.set_property(
+            'xalign',
+            0.5
+        )
+        column = Gtk.TreeViewColumn(
+            '№',
+            renderer,
+            text=0
+        )
+        column.set_alignment(
+            0.5
+        )
+        column.set_sort_column_id(
+            0
+        )
+        self.tree.append_column(
+            column
+        )
+
+        renderer = Gtk.CellRendererText()
 
         column = Gtk.TreeViewColumn(
             'Название',
             renderer,
-            text=0
+            text=1
         )
 
         renderer.set_property(
@@ -186,7 +208,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         column = Gtk.TreeViewColumn(
             'Дата',
             renderer,
-            text=3
+            text=4
         )
 
         column.set_alignment(
@@ -593,52 +615,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     doc.get('filename')
                 )
 
-            for doc in query.fetchmany(50):
-
-                print(
-                    'TITLE:',
-                    doc.get('title'),
-                    'RELEVANCE:',
-                    doc.get('relevancyrating')
-                )
-
-                print(
-                    'DOC ITEMS:',
-                    list(doc.items())
-                )
-
-                print(
-                    'DB ATTRIBUTES:',
-                    [
-                        name
-                        for name in dir(self.db)
-                        if 'db' in name.lower()
-                        or 'xap' in name.lower()
-                        or 'index' in name.lower()
-                    ]
-                )
-
-                print(
-                    'QUERY ATTRIBUTES:',
-                    [
-                        name
-                        for name in dir(query)
-                        if 'xap' in name.lower()
-                        or 'db' in name.lower()
-                        or 'rank' in name.lower()
-                        or 'score' in name.lower()
-                    ]
-                )
-
-                print(
-                    'XQUERY:',
-                    query.getxquery()
-                )
-
-                print(
-                    'XDOCID:',
-                    doc.get('xdocid')
-                )
+            for rank, doc in enumerate(query.fetchmany(50), start=1):
 
                 url = getattr(
                     doc,
@@ -675,6 +652,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
                 self.model.append(
                     [
+                        rank,
                         title,
                         filename,
                         url,
@@ -837,10 +815,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self._clear_preview()
             return
 
-        title = model[iterator][0]
-        date = model[iterator][3]
-        tags = model[iterator][4]
-        snippets = model[iterator][5]
+        title = model[iterator][1]
+        date = model[iterator][4]
+        tags = model[iterator][5]
+        snippets = model[iterator][6]
 
         self.preview_title.set_text(
             title
@@ -940,6 +918,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self.current_snippet_index -= 1
 
+        self.window.pageview.find_bar.find_previous()
+
         self._show_current_snippet()
 
     def _next_snippet(self, button):
@@ -954,6 +934,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         self.current_snippet_index += 1
+
+        self.window.pageview.find_bar.find_next()
 
         self._show_current_snippet()
 
@@ -1068,7 +1050,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         row = model[path]
 
-        url = row[2]
+        url = row[3]
 
         self._open_result(
             url
@@ -1089,7 +1071,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
             if iterator is not None:
 
-                url = model[iterator][2]
+                url = model[iterator][3]
 
                 self._open_result(
                     url
@@ -1141,6 +1123,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
             self.window.pageview.set_page(
                 page
+            )
+
+            self.window.pageview.find_bar.find(
+                FindQuery(self.entry.get_text().strip())
             )
 
         except Exception as error:
