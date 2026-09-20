@@ -135,7 +135,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             str,      # 3 date
             object,   # 4 tags
             object,   # 5 snippets
-            float,    # 6 relevance
         )
 
         self.tree = Gtk.TreeView(
@@ -192,31 +191,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         column.set_alignment(
             0.5
-        )
-
-        self.tree.append_column(
-            column
-        )
-
-        renderer = Gtk.CellRendererText()
-
-        renderer.set_property(
-            'xalign',
-            0.5
-        )
-
-        column = Gtk.TreeViewColumn(
-            'Р, %',
-            renderer
-        )
-
-        column.set_alignment(
-            0.5
-        )
-
-        column.set_cell_data_func(
-            renderer,
-            self._render_relevance
         )
 
         self.tree.append_column(
@@ -690,17 +664,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     date
                 )
 
-                relevance = doc.get(
-                    'relevancyrating'
-                )
-
-                if relevance:
-                    relevance = float(
-                        relevance.rstrip('%')
-                    )
-                else:
-                    relevance = 0
-
                 tags = self._get_tags(
                     doc
                 )
@@ -718,7 +681,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                         display_date,
                         tags,
                         snippets,
-                        relevance,
                     ]
                 )
 
@@ -730,24 +692,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 'Ошибка поиска:\n\n'
                 + str(error)
             )
-
-    def _render_relevance(
-        self,
-        column,
-        renderer,
-        model,
-        iterator,
-        data=None
-    ):
-
-        relevance = model[iterator][6]
-
-        renderer.set_property(
-            'text',
-            '{}'.format(
-                round(relevance)
-            )
-        )
 
     # =====================================================
     # Metadata
