@@ -10,6 +10,12 @@ from zim.newfs import LocalFile
 
 from recoll import recoll
 
+import xapian
+
+print(
+    'XAPIAN VERSION:',
+    xapian.version_string()
+)
 
 class RecollSearchPlugin(PluginClass):
 
@@ -147,31 +153,72 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             renderer,
             text=0
         )
+
+        renderer.set_property(
+            'xalign',
+            0.0
+        )
+
         column.set_expand(
             True
         )
+
         self.tree.append_column(
             column
         )
 
         renderer = Gtk.CellRendererText()
+
+        column.set_expand(
+            True
+        )
+
+        self.tree.append_column(
+            column
+        )
+
+        renderer = Gtk.CellRendererText()
+
+        renderer.set_property(
+            'xalign',
+            0.5
+        )
 
         column = Gtk.TreeViewColumn(
             'Дата',
             renderer,
             text=3
         )
+
+        column.set_alignment(
+            0.5
+        )
+
         self.tree.append_column(
             column
         )
 
         renderer = Gtk.CellRendererText()
 
-        column = Gtk.TreeViewColumn(
-            'Релевантность',
-            renderer,
-            text=6
+        renderer.set_property(
+            'xalign',
+            0.5
         )
+
+        column = Gtk.TreeViewColumn(
+            'Р, %',
+            renderer
+        )
+
+        column.set_alignment(
+            0.5
+        )
+
+        column.set_cell_data_func(
+            renderer,
+            self._render_relevance
+        )
+
         self.tree.append_column(
             column
         )
@@ -191,12 +238,14 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self._selection_changed
         )
 
-        renderer = Gtk.CellRendererText()
+        self.tree.connect(
+            'row-activated',
+            self._row_activated
+        )
 
-        column = Gtk.TreeViewColumn(
-            'Результат',
-            renderer,
-            text=0
+        self.tree.connect(
+            'key-press-event',
+            self._key_press
         )
 
         self.tree.append_column(
@@ -487,16 +536,134 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
             query = self.db.query()
 
+            print(
+                'CONNECTION TYPE:',
+                type(query.connection)
+            )
+
+            print(
+                'CONNECTION DIR:',
+                [
+                    name
+                    for name in dir(query.connection)
+                    if not name.startswith('_')
+                ]
+            )
+
+            cursor = self.db.cursor()
+
+            print(
+                'CURSOR TYPE:',
+                type(cursor)
+            )
+
+            print(
+                'CURSOR DIR:',
+                [
+                    name
+                    for name in dir(cursor)
+                    if not name.startswith('_')
+                ]
+            )
+
+            print(
+                'DB DIR:',
+                [
+                    name
+                    for name in dir(self.db)
+                    if not name.startswith('_')
+                ]
+            )
+
+            print(
+                'XAPIAN VERSION:',
+                xapian.version_string()
+            )
+
+            print(
+                'RECOLL MODULE:',
+                recoll.__file__
+            )
+
+            print(
+                'XAPIAN MODULE:',
+                xapian.__file__
+            )
+
+            query.sortby(
+                'relevancyrating',
+                ascending=False
+            )
+
             query.execute(
                 text,
                 fetchtext=True
             )
 
+            print(
+                'GROUPS:',
+                query.getgroups()
+            )
+
+            for index, doc in enumerate(
+                query.fetchmany(10)
+            ):
+
+                print(
+                    index + 1,
+                    'XDOCID:',
+                    doc.get('xdocid'),
+                    'RELEVANCE:',
+                    doc.get('relevancyrating'),
+                    'FILENAME:',
+                    doc.get('filename')
+                )
+
             for doc in query.fetchmany(50):
+
+                print(
+                    'TITLE:',
+                    doc.get('title'),
+                    'RELEVANCE:',
+                    doc.get('relevancyrating')
+                )
 
                 print(
                     'DOC ITEMS:',
                     list(doc.items())
+                )
+
+                print(
+                    'DB ATTRIBUTES:',
+                    [
+                        name
+                        for name in dir(self.db)
+                        if 'db' in name.lower()
+                        or 'xap' in name.lower()
+                        or 'index' in name.lower()
+                    ]
+                )
+
+                print(
+                    'QUERY ATTRIBUTES:',
+                    [
+                        name
+                        for name in dir(query)
+                        if 'xap' in name.lower()
+                        or 'db' in name.lower()
+                        or 'rank' in name.lower()
+                        or 'score' in name.lower()
+                    ]
+                )
+
+                print(
+                    'XQUERY:',
+                    query.getxquery()
+                )
+
+                print(
+                    'XDOCID:',
+                    doc.get('xdocid')
                 )
 
                 url = getattr(
@@ -527,12 +694,12 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     'relevancyrating'
                 )
 
-                if relevance is None:
+                if relevance:
+                    relevance = float(
+                        relevance.rstrip('%')
+                    )
+                else:
                     relevance = 0
-
-                relevance = float(
-                    relevance
-                )
 
                 tags = self._get_tags(
                     doc
@@ -563,6 +730,24 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 'Ошибка поиска:\n\n'
                 + str(error)
             )
+
+    def _render_relevance(
+        self,
+        column,
+        renderer,
+        model,
+        iterator,
+        data=None
+    ):
+
+        relevance = model[iterator][6]
+
+        renderer.set_property(
+            'text',
+            '{}'.format(
+                round(relevance)
+            )
+        )
 
     # =====================================================
     # Metadata
