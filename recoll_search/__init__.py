@@ -1,6 +1,6 @@
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
-
+from datetime import datetime
 from gi.repository import Gtk, Pango
 
 from zim.plugins import PluginClass
@@ -122,22 +122,58 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         # Results
         # -------------------------------------------------
 
-		self.model = Gtk.ListStore(
-		    str,      # 0 title
-		    str,      # 1 filename
-		    str,      # 2 url
-		    str,      # 3 date
-		    object,   # 4 tags
-		    object,   # 5 snippets
-		    float,    # 6 relevance
-		)
+        self.model = Gtk.ListStore(
+            str,      # 0 title
+            str,      # 1 filename
+            str,      # 2 url
+            str,      # 3 date
+            object,   # 4 tags
+            object,   # 5 snippets
+            float,    # 6 relevance
+        )
 
         self.tree = Gtk.TreeView(
             model=self.model
         )
 
         self.tree.set_headers_visible(
-            False
+            True
+        )
+
+        renderer = Gtk.CellRendererText()
+
+        column = Gtk.TreeViewColumn(
+            'Название',
+            renderer,
+            text=0
+        )
+        column.set_expand(
+            True
+        )
+        self.tree.append_column(
+            column
+        )
+
+        renderer = Gtk.CellRendererText()
+
+        column = Gtk.TreeViewColumn(
+            'Дата',
+            renderer,
+            text=3
+        )
+        self.tree.append_column(
+            column
+        )
+
+        renderer = Gtk.CellRendererText()
+
+        column = Gtk.TreeViewColumn(
+            'Релевантность',
+            renderer,
+            text=6
+        )
+        self.tree.append_column(
+            column
         )
 
         self.tree.set_enable_search(
@@ -483,6 +519,21 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     doc
                 )
 
+                display_date = self._format_short_date(
+                    date
+                )
+
+                relevance = doc.get(
+                    'relevancyrating'
+                )
+
+                if relevance is None:
+                    relevance = 0
+
+                relevance = float(
+                    relevance
+                )
+
                 tags = self._get_tags(
                     doc
                 )
@@ -497,7 +548,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                         title,
                         filename,
                         url,
-                        date,
+                        display_date,
                         tags,
                         snippets,
                         relevance,
@@ -856,6 +907,22 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             month_name,
             year
         )
+
+    def _format_short_date(self, value):
+
+        if not value:
+            return ''
+
+        try:
+            return datetime.strptime(
+                value[:10],
+                '%Y-%m-%d'
+            ).strftime(
+                '%d.%m.%Y'
+            )
+
+        except Exception:
+            return value
 
     # =====================================================
     # Open result
