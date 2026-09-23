@@ -148,79 +148,49 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         renderer = Gtk.CellRendererText()
+
         renderer.set_property(
             'xalign',
             0.5
         )
+
         column = Gtk.TreeViewColumn(
             '№',
             renderer,
             text=0
         )
+
         column.set_alignment(
             0.5
         )
-        column.set_sort_column_id(
-            0
+
+        column.set_fixed_width(
+            45
         )
+
         self.tree.append_column(
             column
         )
 
         renderer = Gtk.CellRendererText()
-
-        column = Gtk.TreeViewColumn(
-            'Название',
-            renderer,
-            text=1
-        )
 
         renderer.set_property(
             'xalign',
             0.0
         )
 
-        column.set_expand(
-            True
-        )
-
-        self.tree.append_column(
-            column
-        )
-
-        renderer = Gtk.CellRendererText()
-
-        column.set_expand(
-            True
-        )
-
-        self.tree.append_column(
-            column
-        )
-
-        renderer = Gtk.CellRendererText()
-
-        renderer.set_property(
-            'xalign',
-            0.5
-        )
-
         column = Gtk.TreeViewColumn(
-            'Дата',
+            'Результат',
             renderer,
-            text=4
+            text=1
         )
 
-        column.set_alignment(
-            0.5
+        column.set_expand(
+            True
         )
 
         self.tree.append_column(
             column
-        )
-
-        self.tree.set_enable_search(
-            False
         )
 
         selection = self.tree.get_selection()
@@ -244,18 +214,15 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self._key_press
         )
 
-        self.tree.append_column(
-            column
+        self.tree.set_enable_search(
+            False
         )
 
-        self.tree.connect(
-            'row-activated',
-            self._row_activated
-        )
+        result_scroll = Gtk.ScrolledWindow()
 
-        self.tree.connect(
-            'key-press-event',
-            self._key_press
+        result_scroll.set_policy(
+            Gtk.PolicyType.AUTOMATIC,
+            Gtk.PolicyType.AUTOMATIC
         )
 
         result_scroll = Gtk.ScrolledWindow()
@@ -266,7 +233,15 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         result_scroll.set_min_content_height(
-            180
+            120
+        )
+
+        result_scroll.set_max_content_height(
+            160
+        )
+
+        result_scroll.set_vexpand(
+            False
         )
 
         result_scroll.add(
@@ -275,8 +250,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         vbox.pack_start(
             result_scroll,
-            True,
-            True,
+            False,
+            False,
             0
         )
 
@@ -284,20 +259,9 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         # Preview
         # -------------------------------------------------
 
-        separator = Gtk.Separator(
-            orientation=Gtk.Orientation.HORIZONTAL
-        )
-
-        vbox.pack_start(
-            separator,
-            False,
-            False,
-            4
-        )
-
         self.preview_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL,
-            spacing=6
+            spacing=4
         )
 
         self.preview_title = Gtk.Label()
@@ -310,12 +274,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             True
         )
 
-        self.preview_title.set_markup(
-            ''
-        )
-
-        self.preview_title.set_ellipsize(
-            Pango.EllipsizeMode.END
+        self.preview_title.set_line_wrap(
+            True
         )
 
         self.preview_box.pack_start(
@@ -325,27 +285,43 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             0
         )
 
-        self.preview_date = Gtk.Label()
+        self.preview_filename = Gtk.Label()
 
-        self.preview_date.set_xalign(
+        self.preview_filename.set_xalign(
             0
         )
 
+        self.preview_filename.set_selectable(
+            True
+        )
+
+        self.preview_filename.set_line_wrap(
+            True
+        )
+
         self.preview_box.pack_start(
-            self.preview_date,
+            self.preview_filename,
             False,
             False,
             0
         )
 
-        self.preview_tags = Gtk.Label()
+        self.preview_path = Gtk.Label()
 
-        self.preview_tags.set_xalign(
+        self.preview_path.set_xalign(
             0
         )
 
+        self.preview_path.set_selectable(
+            True
+        )
+
+        self.preview_path.set_line_wrap(
+            True
+        )
+
         self.preview_box.pack_start(
-            self.preview_tags,
+            self.preview_path,
             False,
             False,
             0
@@ -436,6 +412,16 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self.preview_text.set_wrap_mode(
             Gtk.WrapMode.WORD
+        )
+
+        zim_font = (
+            self.window.pageview.textview
+            .get_pango_context()
+            .get_font_description()
+        )
+
+        self.preview_text.modify_font(
+            zim_font
         )
 
         self.preview_text.set_left_margin(
@@ -591,31 +577,31 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 ascending=False
             )
 
-            query.execute(
-                text,
-                fetchtext=True
-            )
+            query.execute(text, fetchtext=True)
 
+            docs = query.fetchmany(50)
+
+            if docs:
+                print(
+                    'DOC KEYS:',
+                    docs[0].keys()
+                )
+
+                print(
+                    'DOC ITEMS:',
+                    docs[0].items()
+                )
+
+            print(
+                'DOC TEXT TEST:',
+                repr(getattr(docs[0], 'text', '')) if docs else '<NO RESULTS>'
+            )
             print(
                 'GROUPS:',
                 query.getgroups()
             )
 
-            for index, doc in enumerate(
-                query.fetchmany(10)
-            ):
-
-                print(
-                    index + 1,
-                    'XDOCID:',
-                    doc.get('xdocid'),
-                    'RELEVANCE:',
-                    doc.get('relevancyrating'),
-                    'FILENAME:',
-                    doc.get('filename')
-                )
-
-            for rank, doc in enumerate(query.fetchmany(50), start=1):
+            for rank, doc in enumerate(docs, start=1):
 
                 url = getattr(
                     doc,
@@ -650,17 +636,15 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     maxoccs=300
                 )
 
-                self.model.append(
-                    [
-                        rank,
-                        title,
-                        filename,
-                        url,
-                        display_date,
-                        tags,
-                        snippets,
-                    ]
-                )
+                self.model.append([
+                    rank,
+                    title,
+                    filename,
+                    url,
+                    display_date,
+                    tags,
+                    snippets,
+                ])
 
             query.close()
 
@@ -677,29 +661,16 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
     def _get_title(self, doc):
 
-        text = getattr(
-            doc,
-            'text',
-            ''
-        )
+        text = getattr(doc, 'text', '')
 
         for line in text.splitlines():
 
             line = line.strip()
 
-            if (
-                line.startswith('====== ')
-                and line.endswith(' ======')
-            ):
-                return line[7:-7].strip()
+            if line:
+                return line
 
-        filename = getattr(
-            doc,
-            'filename',
-            ''
-        )
-
-        return filename
+        return getattr(doc, 'filename', '')
 
     def _get_date(self, doc):
 
@@ -816,31 +787,29 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         title = model[iterator][1]
-        date = model[iterator][4]
-        tags = model[iterator][5]
+        filename = model[iterator][2]
+        url = model[iterator][3]
         snippets = model[iterator][6]
 
+        parsed = urlparse(
+            url
+        )
+
+        path = unquote(
+            parsed.path
+        )
+
         self.preview_title.set_text(
-            title
+            'Заголовок: ' + title
         )
 
-        self.preview_date.set_text(
-            self._format_date(
-                date
-            )
+        self.preview_filename.set_text(
+            'Имя файла: ' + filename
         )
 
-        if tags:
-
-            self.preview_tags.set_text(
-                ' '.join(tags)
-            )
-
-        else:
-
-            self.preview_tags.set_text(
-                ''
-            )
+        self.preview_path.set_text(
+            'Путь: ' + path
+        )
 
         self.current_snippets = (
             snippets or []
@@ -1148,11 +1117,11 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             ''
         )
 
-        self.preview_date.set_text(
+        self.preview_filename.set_text(
             ''
         )
 
-        self.preview_tags.set_text(
+        self.preview_path.set_text(
             ''
         )
 
