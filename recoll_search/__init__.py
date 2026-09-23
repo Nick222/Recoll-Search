@@ -11,12 +11,6 @@ from zim.newfs import LocalFile
 
 from recoll import recoll
 
-import xapian
-
-print(
-    'XAPIAN VERSION:',
-    xapian.version_string()
-)
 
 class RecollSearchPlugin(PluginClass):
 
@@ -204,16 +198,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self._selection_changed
         )
 
-        self.tree.connect(
-            'row-activated',
-            self._row_activated
-        )
-
-        self.tree.connect(
-            'key-press-event',
-            self._key_press
-        )
-
         self.tree.set_enable_search(
             False
         )
@@ -389,6 +373,26 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             0
         )
 
+        self.go_to_button = Gtk.Button(
+            label='Перейти к совпадению'
+        )
+
+        self.go_to_button.set_tooltip_text(
+            'Открыть заметку на текущем совпадении'
+        )
+
+        self.go_to_button.connect(
+            'clicked',
+            self._go_to_match
+        )
+
+        navigation_box.pack_start(
+            self.go_to_button,
+            False,
+            False,
+            12
+        )
+
         self.preview_box.pack_start(
             navigation_box,
             False,
@@ -518,60 +522,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
             query = self.db.query()
 
-            print(
-                'CONNECTION TYPE:',
-                type(query.connection)
-            )
-
-            print(
-                'CONNECTION DIR:',
-                [
-                    name
-                    for name in dir(query.connection)
-                    if not name.startswith('_')
-                ]
-            )
-
-            cursor = self.db.cursor()
-
-            print(
-                'CURSOR TYPE:',
-                type(cursor)
-            )
-
-            print(
-                'CURSOR DIR:',
-                [
-                    name
-                    for name in dir(cursor)
-                    if not name.startswith('_')
-                ]
-            )
-
-            print(
-                'DB DIR:',
-                [
-                    name
-                    for name in dir(self.db)
-                    if not name.startswith('_')
-                ]
-            )
-
-            print(
-                'XAPIAN VERSION:',
-                xapian.version_string()
-            )
-
-            print(
-                'RECOLL MODULE:',
-                recoll.__file__
-            )
-
-            print(
-                'XAPIAN MODULE:',
-                xapian.__file__
-            )
-
             query.sortby(
                 'relevancyrating',
                 ascending=False
@@ -580,26 +530,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             query.execute(text, fetchtext=True)
 
             docs = query.fetchmany(50)
-
-            if docs:
-                print(
-                    'DOC KEYS:',
-                    docs[0].keys()
-                )
-
-                print(
-                    'DOC ITEMS:',
-                    docs[0].items()
-                )
-
-            print(
-                'DOC TEXT TEST:',
-                repr(getattr(docs[0], 'text', '')) if docs else '<NO RESULTS>'
-            )
-            print(
-                'GROUPS:',
-                query.getgroups()
-            )
 
             for rank, doc in enumerate(docs, start=1):
 
@@ -636,6 +566,11 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     maxoccs=300
                 )
 
+                preview_data = self._build_preview_data(
+                    getattr(doc, 'text', ''),
+                    snippets
+                )
+
                 self.model.append([
                     rank,
                     title,
@@ -643,7 +578,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     url,
                     display_date,
                     tags,
-                    snippets,
+                    preview_data,
                 ])
 
             query.close()
@@ -667,10 +602,20 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
             line = line.strip()
 
-            if line:
-                return line
+            if not line:
+                continue
 
-        return getattr(doc, 'filename', '')
+            if len(line) > 100:
+                break
+
+            return line
+
+        filename = getattr(doc, 'filename', '')
+
+        if filename.endswith('.txt'):
+            filename = filename[:-4]
+
+        return filename.replace('_', ' ')
 
     def _get_date(self, doc):
 
@@ -789,7 +734,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         title = model[iterator][1]
         filename = model[iterator][2]
         url = model[iterator][3]
-        snippets = model[iterator][6]
+        preview_data = model[iterator][6]
 
         parsed = urlparse(
             url
@@ -812,7 +757,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         self.current_snippets = (
-            snippets or []
+            preview_data or []
         )
 
         self.current_snippet_index = 0
@@ -847,6 +792,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 False
             )
 
+            self.go_to_button.set_sensitive(
+                False
+            )
+
             return
 
         self.preview_counter.set_text(
@@ -864,18 +813,256 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self.current_snippet_index < count - 1
         )
 
-        snippet = self.current_snippets[
+        self.go_to_button.set_sensitive(
+            True
+        )
+
+        preview = self.current_snippets[
             self.current_snippet_index
         ]
 
-        if len(snippet) >= 3:
-            text = snippet[2]
-        else:
-            text = ''
-
-        self._set_snippet_text(
-            text
+        self._set_context_text(
+            preview
         )
+
+    def _build_preview_data(
+        self,
+        text,
+        snippets
+    ):
+
+        if not text or not snippets:
+            return []
+
+        matches = []
+
+        parser = _MatchCollector()
+
+        for snippet in snippets:
+
+            if len(snippet) < 3:
+                continue
+
+            html = snippet[2]
+
+            try:
+
+                parser.feed(
+                    html
+                )
+
+                parser.close()
+
+            except Exception:
+                pass
+
+        for match in parser.matches:
+
+            if not match:
+                continue
+
+            start = 0
+
+            while True:
+
+                position = text.lower().find(
+                    match.lower(),
+                    start
+                )
+
+                if position < 0:
+                    break
+
+                matches.append(
+                    (
+                        position,
+                        position + len(match)
+                    )
+                )
+
+                start = position + len(match)
+
+        matches.sort()
+
+        result = []
+
+        for start, end in matches:
+
+            # Если новое совпадение полностью или частично
+            # перекрывает уже найденное, оставляем более длинное.
+
+            if result:
+
+                previous = result[-1]
+
+                previous_start = previous['start']
+                previous_end = previous['end']
+
+                if start < previous_end:
+
+                    if end <= previous_end:
+                        continue
+
+                    if end - start > previous_end - previous_start:
+                        result[-1] = {
+                            'text': text,
+                            'start': start,
+                            'end': end,
+                        }
+
+                    continue
+
+            result.append({
+                'text': text,
+                'start': start,
+                'end': end,
+            })
+
+        return result
+
+    def _set_context_text(
+        self,
+        preview
+    ):
+
+        text = preview['text']
+
+        start = preview['start']
+
+        end = preview['end']
+
+        lines = text.splitlines(
+            keepends=True
+        )
+
+        position = 0
+        line_index = None
+
+        for index, line in enumerate(lines):
+
+            line_end = (
+                position + len(line)
+            )
+
+            if (
+                position <= start
+                < line_end
+            ):
+
+                line_index = index
+                break
+
+            position = line_end
+
+        if line_index is None:
+
+            self.preview_text.get_buffer().set_text(
+                ''
+            )
+
+            return
+
+        current_line_start = sum(
+            len(line)
+            for line in lines[:line_index]
+        )
+
+        current_line_end = (
+            current_line_start
+            + len(lines[line_index])
+        )
+
+        previous_line = ''
+
+        if line_index > 0:
+
+            previous_line = lines[
+                line_index - 1
+            ].rstrip('\r\n')
+
+        next_line = ''
+
+        if line_index + 1 < len(lines):
+
+            next_line = lines[
+                line_index + 1
+            ].rstrip('\r\n')
+
+        before_start = max(
+            current_line_start,
+            start - 50
+        )
+
+        after_end = min(
+            current_line_end,
+            end + 50
+        )
+
+        before = text[
+            before_start:start
+        ]
+
+        match = text[
+            start:end
+        ]
+
+        after = text[
+            end:after_end
+        ]
+
+        buffer = self.preview_text.get_buffer()
+
+        buffer.set_text('')
+
+        if previous_line:
+
+            iterator = (
+                buffer.get_end_iter()
+            )
+
+            buffer.insert(
+                iterator,
+                previous_line + '\n'
+            )
+
+        iterator = (
+            buffer.get_end_iter()
+        )
+
+        buffer.insert(
+            iterator,
+            before
+        )
+
+        iterator = (
+            buffer.get_end_iter()
+        )
+
+        buffer.insert_with_tags(
+            iterator,
+            match,
+            self.match_tag
+        )
+
+        iterator = (
+            buffer.get_end_iter()
+        )
+
+        buffer.insert(
+            iterator,
+            after
+        )
+
+        if next_line:
+
+            iterator = (
+                buffer.get_end_iter()
+            )
+
+            buffer.insert(
+                iterator,
+                '\n' + next_line
+            )
 
     def _previous_snippet(self, button):
 
@@ -886,8 +1073,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         self.current_snippet_index -= 1
-
-        self.window.pageview.find_bar.find_previous()
 
         self._show_current_snippet()
 
@@ -903,8 +1088,6 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         self.current_snippet_index += 1
-
-        self.window.pageview.find_bar.find_next()
 
         self._show_current_snippet()
 
@@ -1005,52 +1188,23 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return value
 
     # =====================================================
-    # Open result
+    # Open current match
     # =====================================================
 
-    def _row_activated(
-        self,
-        tree,
-        path,
-        column
-    ):
+    def _go_to_match(self, button):
 
-        model = tree.get_model()
+        if not self.current_snippets:
+            return
 
-        row = model[path]
-
-        url = row[3]
-
-        self._open_result(
-            url
+        model, iterator = (
+            self.tree.get_selection()
+            .get_selected()
         )
 
-    def _key_press(
-        self,
-        tree,
-        event
-    ):
+        if iterator is None:
+            return
 
-        if event.keyval == 65293:  # Enter
-
-            model, iterator = (
-                tree.get_selection()
-                .get_selected()
-            )
-
-            if iterator is not None:
-
-                url = model[iterator][3]
-
-                self._open_result(
-                    url
-                )
-
-                return True
-
-        return False
-
-    def _open_result(self, url):
+        url = model[iterator][3]
 
         if not url:
             return
@@ -1090,18 +1244,87 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 )
             )
 
-            self.window.pageview.set_page(
+            self.window.open_page(
                 page
             )
 
-            self.window.pageview.find_bar.find(
-                FindQuery(self.entry.get_text().strip())
+            preview = self.current_snippets[
+                self.current_snippet_index
+            ]
+
+            match_text = (
+                preview['text'][
+                    preview['start']:
+                    preview['end']
+                ]
+            )
+
+            if not match_text:
+                return
+
+            buffer = (
+                self.window.pageview.textview
+                .get_buffer()
+            )
+
+            search_iter = buffer.get_start_iter()
+
+            match_start = None
+            match_end = None
+
+            for index in range(
+                self.current_snippet_index + 1
+            ):
+
+                item = self.current_snippets[
+                    index
+                ]
+
+                item_text = item['text'][
+                    item['start']:
+                    item['end']
+                ]
+
+                if not item_text:
+                    return
+
+                result = search_iter.forward_search(
+                    item_text,
+                    Gtk.TextSearchFlags.CASE_INSENSITIVE
+                )
+
+                if result is None:
+                    return
+
+                match_start, match_end = result
+
+                search_iter = (
+                    match_end.copy()
+                )
+
+            if (
+                match_start is None
+                or match_end is None
+            ):
+                return
+
+            buffer.select_range(
+                match_start,
+                match_end
+            )
+
+            self.window.pageview.textview.scroll_to_iter(
+                match_start,
+                0.2,
+                False,
+                0.0,
+                0.5
             )
 
         except Exception as error:
 
             self._show_error(
-                'Не удалось открыть страницу:\n\n'
+                'Не удалось перейти к совпадению:\n\n'
                 + filename
                 + '\n\n'
                 + str(error)
@@ -1142,6 +1365,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         self.next_button.set_sensitive(
+            False
+        )
+
+        self.go_to_button.set_sensitive(
             False
         )
 
@@ -1191,6 +1418,66 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 pass
 
             self.db = None
+
+
+class _MatchCollector(HTMLParser):
+
+    def __init__(self):
+
+        super().__init__(
+            convert_charrefs=True
+        )
+
+        self.matches = []
+        self.in_match = False
+
+    def handle_starttag(
+        self,
+        tag,
+        attrs
+    ):
+
+        if tag.lower() != 'span':
+            return
+
+        attributes = dict(
+            attrs
+        )
+
+        classes = attributes.get(
+            'class',
+            ''
+        ).split()
+
+        if 'rclmatch' in classes:
+
+            self.in_match = True
+
+    def handle_endtag(
+        self,
+        tag
+    ):
+
+        if (
+            tag.lower() == 'span'
+            and self.in_match
+        ):
+
+            self.in_match = False
+
+    def handle_data(
+        self,
+        data
+    ):
+
+        if (
+            data
+            and self.in_match
+        ):
+
+            self.matches.append(
+                data
+            )
 
 
 class _SnippetParser(HTMLParser):
