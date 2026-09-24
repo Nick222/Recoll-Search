@@ -3,6 +3,7 @@ from urllib.parse import unquote, urlparse
 from datetime import datetime
 from gi.repository import Gtk, Pango, PangoCairo
 import cairo
+import os
 
 from zim.gui.pageview.find import FindQuery
 from zim.plugins import PluginClass
@@ -24,7 +25,7 @@ class RecollSearchPlugin(PluginClass):
 
 class RecollSearchMainWindowExtension(MainWindowExtension):
 
-    PREVIEW_WIDTH = 760
+    PREVIEW_WIDTH = 950
     PREVIEW_PADDING = 32
 
     def __init__(self, plugin, window):
@@ -54,8 +55,8 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         self.search_window.set_default_size(
-            900,
-            600
+            1120,
+            700
         )
 
         self.search_window.set_position(
@@ -134,12 +135,13 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self.model = Gtk.ListStore(
             int,      # 0 rank
-            str,      # 1 title
+            str,      # 1 note name / имя заметки
             str,      # 2 filename
             str,      # 3 url
             str,      # 4 date
             object,   # 5 tags
             object,   # 6 snippets
+            str,      # 7 internal heading / внутренний заголовок
         )
 
         self.tree = Gtk.TreeView(
@@ -218,34 +220,30 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             Gtk.PolicyType.AUTOMATIC
         )
 
-        result_scroll = Gtk.ScrolledWindow()
-
-        result_scroll.set_policy(
-            Gtk.PolicyType.AUTOMATIC,
-            Gtk.PolicyType.AUTOMATIC
-        )
-
         result_scroll.set_min_content_height(
             120
-        )
-
-        result_scroll.set_max_content_height(
-            160
-        )
-
-        result_scroll.set_vexpand(
-            False
         )
 
         result_scroll.add(
             self.tree
         )
 
-        vbox.pack_start(
+        # -------------------------------------------------
+        # Results / Preview splitter
+        # -------------------------------------------------
+
+        paned = Gtk.Paned(
+            orientation=Gtk.Orientation.VERTICAL
+        )
+
+        paned.set_position(
+            180
+        )
+
+        paned.pack1(
             result_scroll,
-            False,
-            False,
-            0
+            True,
+            False
         )
 
         # -------------------------------------------------
@@ -278,22 +276,22 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             0
         )
 
-        self.preview_filename = Gtk.Label()
+        self.preview_heading = Gtk.Label()
 
-        self.preview_filename.set_xalign(
+        self.preview_heading.set_xalign(
             0
         )
 
-        self.preview_filename.set_selectable(
+        self.preview_heading.set_selectable(
             True
         )
 
-        self.preview_filename.set_line_wrap(
+        self.preview_heading.set_line_wrap(
             True
         )
 
         self.preview_box.pack_start(
-            self.preview_filename,
+            self.preview_heading,
             False,
             False,
             0
@@ -315,6 +313,69 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self.preview_box.pack_start(
             self.preview_path,
+            False,
+            False,
+            0
+        )
+
+        self.preview_created = Gtk.Label()
+
+        self.preview_created.set_xalign(
+            0
+        )
+
+        self.preview_created.set_selectable(
+            True
+        )
+
+        self.preview_created.set_line_wrap(
+            True
+        )
+
+        self.preview_box.pack_start(
+            self.preview_created,
+            False,
+            False,
+            0
+        )
+
+        self.preview_modified = Gtk.Label()
+
+        self.preview_modified.set_xalign(
+            0
+        )
+
+        self.preview_modified.set_selectable(
+            True
+        )
+
+        self.preview_modified.set_line_wrap(
+            True
+        )
+
+        self.preview_box.pack_start(
+            self.preview_modified,
+            False,
+            False,
+            0
+        )
+
+        self.preview_size = Gtk.Label()
+
+        self.preview_size.set_xalign(
+            0
+        )
+
+        self.preview_size.set_selectable(
+            True
+        )
+
+        self.preview_size.set_line_wrap(
+            True
+        )
+
+        self.preview_box.pack_start(
+            self.preview_size,
             False,
             False,
             0
@@ -448,8 +509,14 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             0
         )
 
-        vbox.pack_start(
+        paned.pack2(
             self.preview_box,
+            True,
+            False
+        )
+
+        vbox.pack_start(
+            paned,
             True,
             True,
             0
@@ -524,7 +591,39 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     ''
                 )
 
-                title = self._get_title(
+                if not url:
+                    continue
+
+                parsed_url = urlparse(
+                    url
+                )
+
+                if parsed_url.scheme != 'file':
+                    continue
+
+                result_path = os.path.realpath(
+                    unquote(
+                        parsed_url.path
+                    )
+                )
+
+                notebook_path = os.path.realpath(
+                    self.window.notebook.folder.path
+                )
+
+                if not (
+                    result_path == notebook_path
+                    or result_path.startswith(
+                        notebook_path + os.sep
+                    )
+                ):
+                    continue
+
+                note_name = self._get_result_title(
+                    doc
+                )
+
+                internal_title = self._get_internal_title(
                     doc
                 )
 
@@ -552,12 +651,13 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
                 self.model.append([
                     rank,
-                    title,
+                    note_name,
                     filename,
                     url,
                     display_date,
                     tags,
                     preview_data,
+                    internal_title,
                 ])
 
             query.close()
@@ -573,50 +673,189 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
     # Metadata
     # =====================================================
 
-    def _get_title(self, doc):
+    def _get_note_name(self, doc):
 
-        text = getattr(doc, 'text', '')
+        url = getattr(
+            doc,
+            'url',
+            ''
+        )
+
+        if not url:
+            return ''
+
+        parsed = urlparse(url)
+
+        if parsed.scheme != 'file':
+            return ''
+
+        filename = unquote(
+            parsed.path
+        )
+
+        if not filename:
+            return ''
+
+        name = filename.rsplit(
+            '/',
+            1
+        )[-1]
+
+        if name.endswith('.txt'):
+            name = name[:-4]
+
+        return name.replace(
+            '_',
+            ' '
+        )
+
+    def _get_internal_title(self, doc):
+
+        url = getattr(
+            doc,
+            'url',
+            ''
+        )
+
+        if not url:
+            return ''
+
+        parsed = urlparse(
+            url
+        )
+
+        if parsed.scheme != 'file':
+            return ''
+
+        filename = unquote(
+            parsed.path
+        )
+
+        try:
+
+            with open(
+                filename,
+                'r',
+                encoding='utf-8'
+            ) as file:
+
+                text = file.read()
+
+        except Exception:
+
+            return ''
 
         for line in text.splitlines():
 
             line = line.strip()
 
-            if not line:
-                continue
+            if (
+                line.startswith('====== ')
+                and line.endswith(' ======')
+            ):
 
-            if len(line) > 100:
-                break
+                return line[7:-7].strip()
 
-            return line
+        return ''
 
-        filename = getattr(doc, 'filename', '')
+    def _get_result_title(self, doc):
+
+        internal_title = self._get_internal_title(
+            doc
+        )
+
+        note_name = self._get_note_name(
+            doc
+        )
+
+        # -------------------------------------------------
+        # Основной вариант:
+        # имя заметки Zim
+        # -------------------------------------------------
+
+        if note_name:
+            return note_name
+
+        # -------------------------------------------------
+        # Если имя заметки получить не удалось:
+        # внутренний заголовок
+        # -------------------------------------------------
+
+        if internal_title:
+            return internal_title
+
+        # -------------------------------------------------
+        # Последний fallback:
+        # физическое имя файла
+        #
+        # Это только fallback.
+        # Имя файла НЕ является именем заметки.
+        # -------------------------------------------------
+
+        filename = getattr(
+            doc,
+            'filename',
+            ''
+        )
 
         if filename.endswith('.txt'):
             filename = filename[:-4]
 
-        return filename.replace('_', ' ')
+        return filename.replace(
+            '_',
+            ' '
+        )
 
     def _get_date(self, doc):
 
-        text = getattr(
+        url = getattr(
             doc,
-            'text',
+            'url',
             ''
         )
 
-        for line in text.splitlines():
+        if not url:
+            return ''
 
-            line = line.strip()
+        parsed = urlparse(
+            url
+        )
 
-            if line.startswith(
-                'Creation-Date:'
-            ):
+        if parsed.scheme != 'file':
+            return ''
 
-                value = line[
-                    len('Creation-Date:'):
-                ].strip()
+        filename = unquote(
+            parsed.path
+        )
 
-                return value
+        try:
+            with open(
+                filename,
+                'r',
+                encoding='utf-8'
+            ) as file:
+
+                for line in file:
+
+                    line = line.rstrip(
+                        '\r\n'
+                    )
+
+                    if line.startswith(
+                        'Creation-Date:'
+                    ):
+
+                        value = line[
+                            len('Creation-Date:'):
+                        ].strip()
+
+                        if value == 'Unknown':
+                            return ''
+
+                        return value[:10]
+
+        except Exception:
+            return ''
 
         return ''
 
@@ -710,30 +949,117 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             self._clear_preview()
             return
 
-        title = model[iterator][1]
-        filename = model[iterator][2]
+        note_name = model[iterator][1]
         url = model[iterator][3]
+        display_date = model[iterator][4]
         preview_data = model[iterator][6]
+        internal_title = model[iterator][7]
 
         parsed = urlparse(
             url
         )
 
-        path = unquote(
+        filename = unquote(
             parsed.path
         )
 
         self.preview_title.set_text(
-            'Заголовок: ' + title
+            'Имя заметки: ' + note_name
         )
 
-        self.preview_filename.set_text(
-            'Имя файла: ' + filename
+        self.preview_heading.set_text(
+            'Внутренний заголовок: ' + (
+                internal_title
+                if internal_title
+                else '—'
+            )
         )
+
+        logical_path = ''
+
+        try:
+
+            file = LocalFile(
+                filename
+            )
+
+            zim_path, file_type = (
+                self.window.notebook.layout.map_file(
+                    file
+                )
+            )
+
+            if zim_path is not None:
+
+                logical_path = str(
+                    zim_path.parent
+                )
+
+        except Exception:
+
+            pass
 
         self.preview_path.set_text(
-            'Путь: ' + path
+            'Путь: ' + (
+                logical_path
+                if logical_path
+                else '—'
+            )
         )
+
+        self.preview_created.set_text(
+            'Создано: ' + (
+                display_date
+                if display_date
+                else '—'
+            )
+        )
+
+        try:
+
+            stat = os.stat(
+                filename
+            )
+
+            modified = datetime.fromtimestamp(
+                stat.st_mtime
+            ).strftime(
+                '%d.%m.%Y'
+            )
+
+            size = stat.st_size
+
+            if size < 1024:
+
+                size_text = (
+                    str(size)
+                    + ' Б'
+                )
+
+            else:
+
+                size_text = (
+                    f'{size / 1024:.1f}'
+                    + ' КБ'
+                )
+
+            self.preview_modified.set_text(
+                'Изменено: ' + modified
+            )
+
+            self.preview_size.set_text(
+                'Размер: ' + size_text
+            )
+
+        except Exception:
+
+            self.preview_modified.set_text(
+                'Изменено: —'
+            )
+
+            self.preview_size.set_text(
+                'Размер: —'
+            )
 
         self.current_snippets = (
             preview_data or []
@@ -1488,21 +1814,11 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
     def _clear_preview(self):
 
-        self.preview_title.set_text(
-            ''
-        )
+        self.preview_title.set_text('')
+        self.preview_heading.set_text('')
+        self.preview_path.set_text('')
 
-        self.preview_filename.set_text(
-            ''
-        )
-
-        self.preview_path.set_text(
-            ''
-        )
-
-        self.preview_counter.set_text(
-            ''
-        )
+        self.preview_counter.set_text('')
 
         self._clear_preview_rendering()
 
