@@ -5,7 +5,7 @@ from gi.repository import Gtk, Pango, PangoCairo
 import cairo
 import os
 
-from zim.gui.pageview.find import FindQuery
+# from zim.gui.pageview.find import FindQuery
 from zim.plugins import PluginClass
 from zim.actions import action
 from zim.gui.mainwindow import MainWindowExtension
@@ -136,10 +136,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         self.model = Gtk.ListStore(
             int,      # 0 rank
             str,      # 1 note name / имя заметки
-            str,      # 2 filename
+            # str,      # 2 filename
             str,      # 3 url
             str,      # 4 date
-            object,   # 5 tags
+            # object,   # 5 tags
             object,   # 6 snippets
             str,      # 7 internal heading / внутренний заголовок
         )
@@ -585,11 +585,11 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     ''
                 )
 
-                filename = getattr(
-                    doc,
-                    'filename',
-                    ''
-                )
+                # filename = getattr(
+                    # doc,
+                    # 'filename',
+                    # ''
+                # )
 
                 if not url:
                     continue
@@ -635,9 +635,9 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                     date
                 )
 
-                tags = self._get_tags(
-                    doc
-                )
+                # tags = self._get_tags(
+                    # doc
+                # )
 
                 snippets = query.getsnippets(
                     doc,
@@ -652,10 +652,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 self.model.append([
                     rank,
                     note_name,
-                    filename,
+                    # filename,
                     url,
                     display_date,
-                    tags,
+                    # tags,
                     preview_data,
                     internal_title,
                 ])
@@ -859,83 +859,83 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         return ''
 
-    def _get_tags(self, doc):
+    # def _get_tags(self, doc):
 
-        text = getattr(
-            doc,
-            'text',
-            ''
-        )
+        # text = getattr(
+            # doc,
+            # 'text',
+            # ''
+        # )
 
-        lines = text.splitlines()
+        # lines = text.splitlines()
 
-        title_index = None
+        # title_index = None
 
-        for index, line in enumerate(lines):
+        # for index, line in enumerate(lines):
 
-            line = line.strip()
+            # line = line.strip()
 
-            if (
-                line.startswith('====== ')
-                and line.endswith(' ======')
-            ):
+            # if (
+                # line.startswith('====== ')
+                # and line.endswith(' ======')
+            # ):
 
-                title_index = index
-                break
+                # title_index = index
+                # break
 
-        if title_index is None:
-            return []
+        # if title_index is None:
+            # return []
 
-        date_index = title_index + 1
+        # date_index = title_index + 1
 
-        if date_index >= len(lines):
-            return []
+        # if date_index >= len(lines):
+            # return []
 
-        date_line = lines[
-            date_index
-        ].strip()
+        # date_line = lines[
+            # date_index
+        # ].strip()
 
-        if not date_line.startswith(
-            'Создано '
-        ):
-            return []
+        # if not date_line.startswith(
+            # 'Создано '
+        # ):
+            # return []
 
-        blank_before_tags = date_index + 1
+        # blank_before_tags = date_index + 1
 
-        if (
-            blank_before_tags >= len(lines)
-            or lines[blank_before_tags].strip() != ''
-        ):
-            return []
+        # if (
+            # blank_before_tags >= len(lines)
+            # or lines[blank_before_tags].strip() != ''
+        # ):
+            # return []
 
-        tags_index = date_index + 2
+        # tags_index = date_index + 2
 
-        if tags_index >= len(lines):
-            return []
+        # if tags_index >= len(lines):
+            # return []
 
-        tags_line = lines[
-            tags_index
-        ].strip()
+        # tags_line = lines[
+            # tags_index
+        # ].strip()
 
-        if not tags_line:
-            return []
+        # if not tags_line:
+            # return []
 
-        tags = tags_line.split()
+        # tags = tags_line.split()
 
-        for tag in tags:
+        # for tag in tags:
 
-            if not tag.startswith('@'):
-                return []
+            # if not tag.startswith('@'):
+                # return []
 
-        blank_after_tags = tags_index + 1
+        # blank_after_tags = tags_index + 1
 
-        if (
-            blank_after_tags >= len(lines)
-            or lines[blank_after_tags].strip() != ''
-        ):
-            return []
+        # if (
+            # blank_after_tags >= len(lines)
+            # or lines[blank_after_tags].strip() != ''
+        # ):
+            # return []
 
-        return tags
+        # return tags
 
     # =====================================================
     # Selection
@@ -950,10 +950,10 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         note_name = model[iterator][1]
-        url = model[iterator][3]
-        display_date = model[iterator][4]
-        preview_data = model[iterator][6]
-        internal_title = model[iterator][7]
+        url = model[iterator][2]
+        display_date = model[iterator][3]
+        preview_data = model[iterator][4]
+        internal_title = model[iterator][5]
 
         parsed = urlparse(
             url
@@ -983,7 +983,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 filename
             )
 
-            zim_path, file_type = (
+            zim_path, _ = (
                 self.window.notebook.layout.map_file(
                     file
                 )
@@ -1569,85 +1569,85 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self._show_current_snippet()
 
-    # =====================================================
-    # Snippet HTML → Gtk TextBuffer
-    # =====================================================
+    # # =====================================================
+    # # Snippet HTML → Gtk TextBuffer
+    # # =====================================================
 
-    def _set_snippet_text(self, html):
+    # def _set_snippet_text(self, html):
 
-        buffer = self.preview_text.get_buffer()
+        # buffer = self.preview_text.get_buffer()
 
-        buffer.set_text('')
+        # buffer.set_text('')
 
-        parser = _SnippetParser(
-            buffer,
-            self.match_tag
-        )
+        # parser = _SnippetParser(
+            # buffer,
+            # self.match_tag
+        # )
 
-        try:
+        # try:
 
-            parser.feed(
-                html
-            )
+            # parser.feed(
+                # html
+            # )
 
-            parser.close()
+            # parser.close()
 
-        except Exception:
+        # except Exception:
 
-            buffer.set_text(
-                html
-            )
+            # buffer.set_text(
+                # html
+            # )
 
     # =====================================================
     # Date
     # =====================================================
 
-    def _format_date(self, value):
+    # def _format_date(self, value):
 
-        if not value:
-            return ''
+        # if not value:
+            # return ''
 
-        if 'T' in value:
+        # if 'T' in value:
 
-            value = value.split(
-                'T',
-                1
-            )[0]
+            # value = value.split(
+                # 'T',
+                # 1
+            # )[0]
 
-        parts = value.split('-')
+        # parts = value.split('-')
 
-        if len(parts) != 3:
-            return value
+        # if len(parts) != 3:
+            # return value
 
-        year, month, day = parts
+        # year, month, day = parts
 
-        months = {
-            '01': 'января',
-            '02': 'февраля',
-            '03': 'марта',
-            '04': 'апреля',
-            '05': 'мая',
-            '06': 'июня',
-            '07': 'июля',
-            '08': 'августа',
-            '09': 'сентября',
-            '10': 'октября',
-            '11': 'ноября',
-            '12': 'декабря',
-        }
+        # months = {
+            # '01': 'января',
+            # '02': 'февраля',
+            # '03': 'марта',
+            # '04': 'апреля',
+            # '05': 'мая',
+            # '06': 'июня',
+            # '07': 'июля',
+            # '08': 'августа',
+            # '09': 'сентября',
+            # '10': 'октября',
+            # '11': 'ноября',
+            # '12': 'декабря',
+        # }
 
-        month_name = months.get(
-            month
-        )
+        # month_name = months.get(
+            # month
+        # )
 
-        if month_name is None:
-            return value
+        # if month_name is None:
+            # return value
 
-        return 'Создано {} {} {}'.format(
-            int(day),
-            month_name,
-            year
-        )
+        # return 'Создано {} {} {}'.format(
+            # int(day),
+            # month_name,
+            # year
+        # )
 
     def _format_short_date(self, value):
 
@@ -1682,7 +1682,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         if iterator is None:
             return
 
-        url = model[iterator][3]
+        url = model[iterator][2]
 
         if not url:
             return
@@ -1710,7 +1710,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 filename
             )
 
-            path, file_type = (
+            path, _ = (
                 self.window.notebook.layout.map_file(
                     file
                 )
@@ -1817,6 +1817,9 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         self.preview_title.set_text('')
         self.preview_heading.set_text('')
         self.preview_path.set_text('')
+        self.preview_created.set_text('')
+        self.preview_modified.set_text('')
+        self.preview_size.set_text('')
 
         self.preview_counter.set_text('')
 
@@ -1946,79 +1949,79 @@ class _MatchCollector(HTMLParser):
             )
 
 
-class _SnippetParser(HTMLParser):
+# class _SnippetParser(HTMLParser):
 
-    def __init__(
-        self,
-        buffer,
-        match_tag
-    ):
+    # def __init__(
+        # self,
+        # buffer,
+        # match_tag
+    # ):
 
-        super().__init__(
-            convert_charrefs=True
-        )
+        # super().__init__(
+            # convert_charrefs=True
+        # )
 
-        self.buffer = buffer
-        self.match_tag = match_tag
-        self.in_match = False
+        # self.buffer = buffer
+        # self.match_tag = match_tag
+        # self.in_match = False
 
-    def handle_starttag(
-        self,
-        tag,
-        attrs
-    ):
+    # def handle_starttag(
+        # self,
+        # tag,
+        # attrs
+    # ):
 
-        if tag.lower() != 'span':
-            return
+        # if tag.lower() != 'span':
+            # return
 
-        attributes = dict(
-            attrs
-        )
+        # attributes = dict(
+            # attrs
+        # )
 
-        classes = attributes.get(
-            'class',
-            ''
-        ).split()
+        # classes = attributes.get(
+            # 'class',
+            # ''
+        # ).split()
 
-        if 'rclmatch' in classes:
+        # if 'rclmatch' in classes:
 
-            self.in_match = True
+            # self.in_match = True
 
-    def handle_endtag(
-        self,
-        tag
-    ):
+    # def handle_endtag(
+        # self,
+        # tag
+    # ):
 
-        if (
-            tag.lower() == 'span'
-            and self.in_match
-        ):
+        # if (
+            # tag.lower() == 'span'
+            # and self.in_match
+        # ):
 
-            self.in_match = False
+            # self.in_match = False
 
-    def handle_data(
-        self,
-        data
-    ):
+    # def handle_data(
+        # self,
+        # data
+    # ):
 
-        if not data:
-            return
+        # if not data:
+            # return
 
-        end_iter = (
-            self.buffer.get_end_iter()
-        )
+        # end_iter = (
+            # self.buffer.get_end_iter()
+        # )
 
-        if self.in_match:
+        # if self.in_match:
 
-            self.buffer.insert_with_tags(
-                end_iter,
-                data,
-                self.match_tag
-            )
+            # self.buffer.insert_with_tags(
+                # end_iter,
+                # data,
+                # self.match_tag
+            # )
 
-        else:
+        # else:
 
-            self.buffer.insert(
-                end_iter,
-                data
-            )
+            # self.buffer.insert(
+                # end_iter,
+                # data
+            # )
