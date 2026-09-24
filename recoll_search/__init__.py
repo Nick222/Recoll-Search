@@ -1,7 +1,8 @@
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from datetime import datetime
-from gi.repository import Gtk, Pango
+from gi.repository import Gtk, Pango, PangoCairo
+import cairo
 
 from zim.gui.pageview.find import FindQuery
 from zim.plugins import PluginClass
@@ -23,6 +24,9 @@ class RecollSearchPlugin(PluginClass):
 
 class RecollSearchMainWindowExtension(MainWindowExtension):
 
+    PREVIEW_WIDTH = 760
+    PREVIEW_PADDING = 32
+
     def __init__(self, plugin, window):
         super().__init__(plugin, window)
 
@@ -32,6 +36,11 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         self.current_snippets = []
         self.current_snippet_index = 0
+
+        self.preview_layout = None
+        self.preview_page_height = 0
+        self.preview_match_y = 0
+        self.preview_match_height = 0
 
     @action('Recoll Search', menuhints='tools')
     def recoll_search(self):
@@ -401,69 +410,39 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
         )
 
         # -------------------------------------------------
-        # Snippet text
+        # Snippet preview — Pango/Cairo
         # -------------------------------------------------
 
-        self.preview_text = Gtk.TextView()
+        self.preview_area = Gtk.DrawingArea()
 
-        self.preview_text.set_editable(
-            False
+        self.preview_area.set_size_request(
+            self.PREVIEW_WIDTH,
+            200
         )
 
-        self.preview_text.set_cursor_visible(
-            False
+        self.preview_area.connect(
+            'draw',
+            self._on_preview_draw
         )
 
-        self.preview_text.set_wrap_mode(
-            Gtk.WrapMode.WORD
+        self.preview_area.connect(
+            'size-allocate',
+            self._on_preview_size_allocate
         )
 
-        zim_font = (
-            self.window.pageview.textview
-            .get_pango_context()
-            .get_font_description()
-        )
+        self.preview_scroll = Gtk.ScrolledWindow()
 
-        self.preview_text.modify_font(
-            zim_font
-        )
-
-        self.preview_text.set_left_margin(
-            6
-        )
-
-        self.preview_text.set_right_margin(
-            6
-        )
-
-        self.preview_text.set_top_margin(
-            6
-        )
-
-        self.preview_text.set_bottom_margin(
-            6
-        )
-
-        buffer = self.preview_text.get_buffer()
-
-        self.match_tag = buffer.create_tag(
-            'recoll-match',
-            weight=Pango.Weight.BOLD,
-        )
-
-        preview_scroll = Gtk.ScrolledWindow()
-
-        preview_scroll.set_policy(
-            Gtk.PolicyType.AUTOMATIC,
+        self.preview_scroll.set_policy(
+            Gtk.PolicyType.NEVER,
             Gtk.PolicyType.AUTOMATIC
         )
 
-        preview_scroll.add(
-            self.preview_text
+        self.preview_scroll.add(
+            self.preview_area
         )
 
         self.preview_box.pack_start(
-            preview_scroll,
+            self.preview_scroll,
             True,
             True,
             0
@@ -780,9 +759,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 ''
             )
 
-            self.preview_text.get_buffer().set_text(
-                ''
-            )
+            self._clear_preview_rendering()
 
             self.previous_button.set_sensitive(
                 False
@@ -926,143 +903,318 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
     ):
 
         text = preview['text']
-
         start = preview['start']
-
         end = preview['end']
 
-        lines = text.splitlines(
-            keepends=True
-        )
-
-        position = 0
-        line_index = None
-
-        for index, line in enumerate(lines):
-
-            line_end = (
-                position + len(line)
-            )
-
-            if (
-                position <= start
-                < line_end
-            ):
-
-                line_index = index
-                break
-
-            position = line_end
-
-        if line_index is None:
-
-            self.preview_text.get_buffer().set_text(
-                ''
-            )
-
+        if not text:
+            self._clear_preview_rendering()
             return
 
-        current_line_start = sum(
-            len(line)
-            for line in lines[:line_index]
+        # -------------------------------------------------
+        # Temporary Cairo surface for Pango layout
+        # -------------------------------------------------
+
+        tmp_surface = cairo.ImageSurface(
+            cairo.FORMAT_ARGB32,
+            1,
+            1
         )
 
-        current_line_end = (
-            current_line_start
-            + len(lines[line_index])
+        cr = cairo.Context(
+            tmp_surface
         )
 
-        previous_line = ''
+        # -------------------------------------------------
+        # Pango layout
+        # -------------------------------------------------
 
-        if line_index > 0:
-
-            previous_line = lines[
-                line_index - 1
-            ].rstrip('\r\n')
-
-        next_line = ''
-
-        if line_index + 1 < len(lines):
-
-            next_line = lines[
-                line_index + 1
-            ].rstrip('\r\n')
-
-        before_start = max(
-            current_line_start,
-            start - 50
+        layout = PangoCairo.create_layout(
+            cr
         )
 
-        after_end = min(
-            current_line_end,
-            end + 50
+        font = (
+            self.window.pageview.textview
+            .get_pango_context()
+            .get_font_description()
         )
 
-        before = text[
-            before_start:start
-        ]
+        layout.set_font_description(
+            font
+        )
 
-        match = text[
-            start:end
-        ]
+        text_width = (
+            self.PREVIEW_WIDTH
+            - 2 * self.PREVIEW_PADDING
+        )
 
-        after = text[
-            end:after_end
-        ]
+        layout.set_width(
+            text_width * Pango.SCALE
+        )
 
-        buffer = self.preview_text.get_buffer()
+        layout.set_wrap(
+            Pango.WrapMode.WORD
+        )
 
-        buffer.set_text('')
+        # -------------------------------------------------
+        # IMPORTANT:
+        #
+        # The REAL Recoll document text is used here.
+        # No artificial line breaks are inserted.
+        # -------------------------------------------------
 
-        if previous_line:
+        layout.set_text(
+            text,
+            -1
+        )
 
-            iterator = (
-                buffer.get_end_iter()
+        # -------------------------------------------------
+        # Python character indexes -> UTF-8 byte indexes
+        # -------------------------------------------------
+
+        start_byte = len(
+            text[:start].encode(
+                'utf-8'
             )
+        )
 
-            buffer.insert(
-                iterator,
-                previous_line + '\n'
+        end_byte = len(
+            text[:end].encode(
+                'utf-8'
             )
-
-        iterator = (
-            buffer.get_end_iter()
         )
 
-        buffer.insert(
-            iterator,
-            before
+        # -------------------------------------------------
+        # Highlight
+        # -------------------------------------------------
+
+        attrs = Pango.AttrList()
+
+        bg = Pango.attr_background_new(
+            15163,
+            30840,
+            55512
         )
 
-        iterator = (
-            buffer.get_end_iter()
+        bg.start_index = start_byte
+        bg.end_index = end_byte
+
+        attrs.insert(
+            bg
         )
 
-        buffer.insert_with_tags(
-            iterator,
-            match,
-            self.match_tag
+        # Pango foreground uses 0..65535.
+        fg = Pango.attr_foreground_new(
+            65535,
+            65535,
+            65535
         )
 
-        iterator = (
-            buffer.get_end_iter()
+        fg.start_index = start_byte
+        fg.end_index = end_byte
+
+        attrs.insert(
+            fg
         )
 
-        buffer.insert(
-            iterator,
-            after
+        layout.set_attributes(
+            attrs
         )
 
-        if next_line:
+        # -------------------------------------------------
+        # Calculate page height
+        # -------------------------------------------------
 
-            iterator = (
-                buffer.get_end_iter()
+        _, logical = (
+            layout.get_pixel_extents()
+        )
+
+        self.preview_page_height = max(
+            1,
+            logical.height
+            + 2 * self.PREVIEW_PADDING
+        )
+
+        # -------------------------------------------------
+        # Find match position
+        # -------------------------------------------------
+
+        pos_start = (
+            layout.index_to_pos(
+                start_byte
             )
+        )
 
-            buffer.insert(
-                iterator,
-                '\n' + next_line
+        self.preview_match_y = (
+            self.PREVIEW_PADDING
+            + pos_start.y / Pango.SCALE
+        )
+
+        self.preview_match_height = max(
+            1,
+            pos_start.height / Pango.SCALE
+        )
+
+        # -------------------------------------------------
+        # Store layout
+        # -------------------------------------------------
+
+        self.preview_layout = layout
+
+        # -------------------------------------------------
+        # Tell Gtk the required content height
+        # -------------------------------------------------
+
+        self.preview_area.set_size_request(
+            self.PREVIEW_WIDTH,
+            int(self.preview_page_height)
+        )
+
+        self.preview_area.queue_draw()
+
+        self._center_preview_match()
+
+    def _on_preview_size_allocate(
+        self,
+        widget,
+        allocation
+    ):
+
+        self._center_preview_match()
+
+    def _center_preview_match(self):
+
+        if self.preview_layout is None:
+            return
+
+        adjustment = (
+            self.preview_scroll
+            .get_vadjustment()
+        )
+
+        if adjustment is None:
+            return
+
+        page_size = (
+            adjustment.get_page_size()
+        )
+
+        upper = (
+            adjustment.get_upper()
+        )
+
+        target = (
+            self.preview_match_y
+            + self.preview_match_height / 2
+            - page_size / 2
+        )
+
+        maximum = max(
+            0,
+            upper - page_size
+        )
+
+        value = max(
+            0,
+            min(
+                target,
+                maximum
             )
+        )
+
+        adjustment.set_value(
+            value
+        )
+
+    def _on_preview_draw(
+        self,
+        widget,
+        cr
+    ):
+
+        allocation = (
+            widget.get_allocation()
+        )
+
+        width = allocation.width
+        height = allocation.height
+
+        # -------------------------------------------------
+        # Background follows current GTK theme.
+        # -------------------------------------------------
+
+        style_context = (
+            widget.get_style_context()
+        )
+
+        Gtk.render_background(
+            style_context,
+            cr,
+            0,
+            0,
+            width,
+            height
+        )
+
+        if self.preview_layout is None:
+            return False
+
+        # -------------------------------------------------
+        # Base text color from current GTK theme
+        # -------------------------------------------------
+
+        color = style_context.get_color(
+            Gtk.StateFlags.NORMAL
+        )
+
+        cr.set_source_rgba(
+            color.red,
+            color.green,
+            color.blue,
+            color.alpha
+        )
+
+        cr.save()
+
+        cr.set_antialias(
+            cairo.ANTIALIAS_GRAY
+        )
+
+        cr.translate(
+            self.PREVIEW_PADDING,
+            self.PREVIEW_PADDING
+        )
+
+        PangoCairo.update_layout(
+            cr,
+            self.preview_layout
+        )
+
+        PangoCairo.show_layout(
+            cr,
+            self.preview_layout
+        )
+
+        cr.restore()
+
+        return False
+
+
+    def _clear_preview_rendering(
+        self
+    ):
+
+        self.preview_layout = None
+
+        self.preview_page_height = 0
+        self.preview_match_y = 0
+        self.preview_match_height = 0
+
+        self.preview_area.set_size_request(
+            self.PREVIEW_WIDTH,
+            1
+        )
+
+        self.preview_area.queue_draw()
 
     def _previous_snippet(self, button):
 
@@ -1352,9 +1504,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             ''
         )
 
-        self.preview_text.get_buffer().set_text(
-            ''
-        )
+        self._clear_preview_rendering()
 
         self.current_snippets = []
 
