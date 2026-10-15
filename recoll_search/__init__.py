@@ -1,7 +1,7 @@
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from datetime import datetime
-from gi.repository import Gtk, Pango, PangoCairo
+from gi.repository import Gtk, Gdk, Pango, PangoCairo
 import cairo
 import os
 
@@ -117,6 +117,28 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
 
         search_box.pack_start(
             button,
+            False,
+            False,
+            0
+        )
+
+        self.copy_button = Gtk.Button(
+            label='Копировать ссылки'
+        )
+
+        self.copy_button.set_tooltip_text(
+            'Скопировать все результаты поиска как ссылки Zim'
+        )
+
+        self.copy_button.set_sensitive(False)
+
+        self.copy_button.connect(
+            'clicked',
+            self._copy_results
+        )
+
+        search_box.pack_start(
+            self.copy_button,
             False,
             False,
             0
@@ -561,6 +583,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
             return
 
         self.model.clear()
+        self.copy_button.set_sensitive(False)
 
         self._clear_preview()
 
@@ -661,6 +684,7 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 ])
 
             query.close()
+            self.copy_button.set_sensitive(len(self.model) > 0)
 
         except Exception as error:
 
@@ -668,6 +692,43 @@ class RecollSearchMainWindowExtension(MainWindowExtension):
                 'Ошибка поиска:\n\n'
                 + str(error)
             )
+
+    def _copy_results(self, button):
+
+        links = []
+
+        for row in self.model:
+
+            note_name = row[1]
+            url = row[2]
+            parsed = urlparse(url)
+
+            if parsed.scheme != 'file':
+                continue
+
+            filename = unquote(parsed.path)
+
+            try:
+                zim_path, _ = self.window.notebook.layout.map_file(
+                    LocalFile(filename)
+                )
+            except Exception:
+                zim_path = None
+
+            if zim_path is None:
+                continue
+
+            page_path = str(zim_path)
+            links.append('[[%s|%s]]' % (page_path, note_name))
+
+        if not links:
+            return
+
+        clipboard = Gtk.Clipboard.get(
+            Gdk.SELECTION_CLIPBOARD
+        )
+        clipboard.set_text('\n'.join(links), -1)
+        clipboard.store()
 
     # =====================================================
     # Metadata
